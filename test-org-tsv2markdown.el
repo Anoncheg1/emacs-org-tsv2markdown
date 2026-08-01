@@ -15,6 +15,7 @@ run `org-tsv2markdown-org2markdown` on the whole buffer, and assert it matches E
     ;; Assert the result
     (should (string= (buffer-string) expected-text))))
 
+;; -=-= tables
 (ert-deftest test-org2markdown-standard ()
   "Test Case 1: Convert a standard 2x2 Org table with plus signs in the hline."
   (let ((input (concat "| Header 1 | Header 2 |\n"
@@ -146,3 +147,124 @@ run `org-tsv2markdown-org2markdown` on the whole buffer, and assert it matches E
         (expected (concat "Header 1\tHeader 2\n"
                           "Cell 1\tCell 2")))
     (my--test-helper-universal-tsv input expected)))
+
+;; -=-= items list
+
+(defun my--test-items2org-helper (input-text expected-text)
+  "Helper function to setup a temporary buffer, insert INPUT-TEXT,
+run `org-tsv2markdown-items2org` on the whole buffer, and assert it matches EXPECTED-TEXT."
+  (with-temp-buffer
+    (insert input-text)
+    ;; Activate the region for the buffer to simulate user selection
+    (transient-mark-mode 1)
+    (set-mark (point-min))
+    (goto-char (point-max))
+    (activate-mark)
+    ;; Run the function under test
+    (org-tsv2markdown-items2org (region-beginning) (region-end))
+    ;; Assert the result
+    (should (string= (buffer-string) expected-text))))
+
+
+(ert-deftest test-org-tsv2markdown-items2org-bold-without-dash ()
+  "Test transformation of '**LABEL:**' format (without leading '- ')."
+  (my--test-items2org-helper
+   "**Zen of Emacs:** C core\n**Zen of Vim:** C core\n"
+   "- Zen of Emacs :: C core\n- Zen of Vim :: C core\n"))
+
+(ert-deftest test-org-tsv2markdown-items2org-bold-with-dash ()
+  "Test transformation of '- **LABEL:**' format (with leading '- ')."
+  (my--test-items2org-helper
+   "- **Zen of Emacs:** C core\n- **Zen of Vim:** C core\n"
+   "- Zen of Emacs :: C core\n- Zen of Vim :: C core\n"))
+
+(ert-deftest test-org-tsv2markdown-items2org-plain-without-dash ()
+  "Test transformation of 'LABEL:' format (no bold, no dash)."
+  (my--test-items2org-helper
+   "Zen of Emacs: C core\nZen of Vim: C core\n"
+   "- Zen of Emacs :: C core\n- Zen of Vim :: C core\n"))
+
+(ert-deftest test-org-tsv2markdown-items2org-plain-with-dash ()
+  "Test transformation of '- LABEL:' format (no bold, with dash)."
+  (my--test-items2org-helper
+   "- Zen of Emacs: C core\n- Zen of Vim: C core\n"
+   "- Zen of Emacs :: C core\n- Zen of Vim :: C core\n"))
+
+(ert-deftest test-org-tsv2markdown-items2org-mixed-formats ()
+  "Test transformation with mixed input formats."
+  (my--test-items2org-helper
+   "**Bold No Dash:** value1\n- **Bold With Dash:** value2\nPlain No Dash: value3\n- Plain With Dash: value4\n"
+   "- Bold No Dash :: value1\n- Bold With Dash :: value2\n- Plain No Dash :: value3\n- Plain With Dash :: value4\n"))
+
+(ert-deftest test-org-tsv2markdown-items2org-leading-whitespace-plain ()
+  "Test transformation of plain text with leading whitespace."
+  (my--test-items2org-helper
+   "   Zen of Emacs: C core\n   Zen of Vim: C core\n"
+   "- Zen of Emacs :: C core\n- Zen of Vim :: C core\n"))
+
+(ert-deftest test-org-tsv2markdown-items2org-leading-whitespace-single-asterisk ()
+  "Test transformation of single asterisk bold with leading whitespace."
+  (my--test-items2org-helper
+   "   *Zen of Emacs:* C core\n   *Zen of Vim:* C core\n"
+   "- Zen of Emacs :: C core\n- Zen of Vim :: C core\n"))
+
+(ert-deftest test-org-tsv2markdown-items2org-single-asterisk-without-dash ()
+  "Test transformation of '*LABEL:*' format (without leading '- ')."
+  (my--test-items2org-helper
+   "*Zen of Emacs:* C core\n*Zen of Vim:* C core\n"
+   "- Zen of Emacs :: C core\n- Zen of Vim :: C core\n"))
+
+(ert-deftest test-org-tsv2markdown-items2org-single-asterisk-with-dash ()
+  "Test transformation of '- *LABEL:*' format (with leading '- ')."
+  (my--test-items2org-helper
+   "- *Zen of Emacs:* C core\n- *Zen of Vim:* C core\n"
+   "- Zen of Emacs :: C core\n- Zen of Vim :: C core\n"))
+
+(ert-deftest test-org-tsv2markdown-items2org-tabs-as-whitespace ()
+  "Test transformation with tabs as leading whitespace."
+  (my--test-items2org-helper
+   "\t\tZen of Emacs: C core\n\t\tZen of Vim: C core\n"
+   "- Zen of Emacs :: C core\n- Zen of Vim :: C core\n"))
+
+(ert-deftest test-org-tsv2markdown-items2org-mixed-whitespace-and-formats ()
+  "Test transformation with mixed whitespace and all format types."
+  (my--test-items2org-helper
+   "   **Bold WS:** val1\n\t*Italic WS:* val2\n  Plain WS: val3\n- **Dash Bold:** val4\n"
+   "- Bold WS :: val1\n- Italic WS :: val2\n- Plain WS :: val3\n- Dash Bold :: val4\n"))
+
+
+(ert-deftest test-org-tsv2markdown-items2org-mixed-whitespace-and-formats ()
+  "Test transformation with mixed whitespace and all format types."
+  (my--test-items2org-helper
+   "   **Bold WS:** val1\n\t*Italic WS:* val2\n  Plain WS: val3\n- **Dash Bold:** val4\n"
+   "- Bold WS :: val1\n- Italic WS :: val2\n- Plain WS :: val3\n- Dash Bold :: val4\n"))
+
+(ert-deftest test-org-tsv2markdown-items2org-chinese-fullwidth-colon-bold ()
+  "Test transformation of Chinese text with full-width colon and double asterisks."
+  (my--test-items2org-helper
+   "   **Emacs 之道：** C core\n   **Emacs 之道：** C core\n"
+   "- Emacs 之道 :: C core\n- Emacs 之道 :: C core\n"))
+
+(ert-deftest test-org-tsv2markdown-items2org-chinese-fullwidth-colon-single-asterisk ()
+  "Test transformation of Chinese text with full-width colon and single asterisks."
+  (my--test-items2org-helper
+   "   *Emacs 之道：* C core\n   *Emacs 之道：* C core\n"
+   "- Emacs 之道 :: C core\n- Emacs 之道 :: C core\n"))
+
+(ert-deftest test-org-tsv2markdown-items2org-chinese-fullwidth-colon-plain ()
+  "Test transformation of Chinese text with full-width colon, no markers."
+  (my--test-items2org-helper
+   "   Emacs 之道： C core\n   Emacs 之道： C core\n"
+   "- Emacs 之道 :: C core\n- Emacs 之道 :: C core\n"))
+
+(ert-deftest test-org-tsv2markdown-items2org-chinese-ascii-colon ()
+  "Test transformation of Chinese text with ASCII colon."
+  (my--test-items2org-helper
+   "**Emacs 之道:** C core\n**Emacs 之道:** C core\n"
+   "- Emacs 之道 :: C core\n- Emacs 之道 :: C core\n"))
+
+(ert-deftest test-org-tsv2markdown-items2org-mixed-chinese-english ()
+  "Test transformation with mixed Chinese and English text."
+  (my--test-items2org-helper
+   "**Zen of Emacs 之道：** C core\n*Vim 哲学:* Python\nEnglish Text: Value\n"
+   "- Zen of Emacs 之道 :: C core\n- Vim 哲学 :: Python\n- English Text :: Value\n"))

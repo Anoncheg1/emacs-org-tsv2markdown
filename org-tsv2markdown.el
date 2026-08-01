@@ -121,12 +121,13 @@ The region is bounded by BEG and END."
         ;; 6. Clean up any trailing whitespace left over on empty lines
         (replace-regexp-in-region "[ \t]+$" "" (point-min) (point-max))))))
 
+
 (defun org-tsv2markdown-items2org (beg end)
   "Reformat lines in region from markdown style to Org-style items.
 
-- Replaces '- **LABEL:**' with '- LABEL ::'
-- Removes all '**'
-- Replaces the first colon in each line with ':: '"
+- Replaces '- **LABEL:**', '**LABEL:**', '*LABEL:*', '- *LABEL:*' with '- LABEL ::'
+- Handles both ASCII ':' and full-width '：' colons
+- Replaces 'LABEL:' or '- LABEL:' with '- LABEL ::'"
   (interactive "r")
   (when (region-active-p)
     (save-excursion
@@ -137,15 +138,25 @@ The region is bounded by BEG and END."
           (goto-char (point-min))
           (while (< (point) (point-max))
             (let* ((line (buffer-substring-no-properties (line-beginning-position) (line-end-position)))
-                   ;; Convert '- **LABEL:**' to '- LABEL ::'
+                   ;; Convert '- **LABEL:**', '**LABEL:**' with ASCII or full-width colon
+                   ;; [^*] matches any char except *, including Chinese characters
+                   ;; [:：] matches both ASCII colon and full-width colon
                    (line2 (replace-regexp-in-string
-                           "^[ \t]*- \\*\\*\\([^*]+\\):\\*\\*" "- \\1 ::" line))
-                   ;; Replace first colon with ':: '
-                   (line2 (replace-regexp-in-string "^[ \t]*\\([^:]+\\): ?" "- \\1 :: " line2 1)))
+                           "^[ \t]*\\(- \\)?\\*\\*\\([^*]+\\)[:：]\\*\\*" "- \\2 ::" line))
+                   ;; If no match yet, try single asterisk pattern
+                   (line2 (if (string-equal line line2)
+                              (replace-regexp-in-string
+                               "^[ \t]*\\(- \\)?\\*\\([^*]+\\)[:：]\\*" "- \\2 ::" line)
+                            line2))
+                   ;; Replace first colon (ASCII or full-width) with ':: ' only if line wasn't already transformed
+                   (line2 (if (string-equal line line2)
+                              (replace-regexp-in-string "^[ \t]*\\(- \\)?\\([^:：]+\\)[:：] ?" "- \\2 :: " line2 1)
+                            line2)))
               (unless (string-equal line line2)
                 (delete-region (line-beginning-position) (line-end-position))
                 (insert line2))
               (forward-line 1))))))))
+
 
 (defun org-tsv2markdown-reformat-table-or-items (beg end)
   "Reformat selected region as Org table or Org-style items.
