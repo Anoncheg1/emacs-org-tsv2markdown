@@ -36,28 +36,52 @@
 ;;; Code:
 
 (defun org-tsv2markdown-tsv2org (beg end)
-  "Convert tab-separated lines in the region into an Org mode table.
+  "Convert tab-separated lines in BEG..END into an Org mode table.
 Each line is split at tabs ('\\t'), replaced with Org table column separator '|'.
-The region is bounded by BEG and END."
+Signals an error if rows have inconsistent column counts."
   (interactive "r")
-  (when (region-active-p)
-    (save-excursion
-      (save-restriction
-        (narrow-to-region (1- beg) (1+ end))
-          (goto-char end)
-          (while (bolp)
-            (backward-char))
-          (setq end (point))
-          (replace-regexp-in-region "[\t]+" "|" beg end)
-          (replace-regexp-in-region "^" "|" beg end)
-          (replace-regexp-in-region "\n" "|\n" beg end)
-          (insert "|") ; at the end of the last line
-          (goto-char beg)
-          (unless (eq end (line-end-position)) ; if more than one line
-            (forward-line)
-            (insert "|-\n")
-            (goto-char beg))
-          (forward-char)))))
+  (save-excursion
+    (goto-char end)
+    (while (bolp) (backward-char))
+    (setq end (point))
+    (let* ((lines (split-string (buffer-substring-no-properties beg end) "\n"))
+           (counts (mapcar (lambda (l) (1+ (length (split-string l "\t")))) lines))
+           (expected (car counts)))
+      (unless (cl-every (lambda (c) (= c expected)) counts)
+        (user-error "Inconsistent column count: %S (expected %d)" counts expected)))
+    (replace-regexp-in-region "[\t]+" "|" beg end)
+    (replace-regexp-in-region "^"     "|" beg end)
+    (replace-regexp-in-region "\n"    "|\n" beg end)
+    ;; After replacements the buffer has grown, so `end' is stale.
+    ;; Recompute where the original content ends (before trailing newlines).
+    (goto-char (point-max))
+    (skip-chars-backward "\n")
+    (insert "|")
+    (goto-char beg)
+    (unless (eq (line-end-position) (1- (point-max)))
+      (forward-line)
+      (insert "|-\n")
+      (goto-char beg))
+    (forward-char)))
+
+;; (defun org-tsv2markdown-tsv2org (beg end)
+;;   "Convert tab-separated lines in BEG..END into an Org mode table.
+;; Each line is split at tabs ('\\t'), replaced with Org table column
+;; separator '|'.  Signals an error if rows have inconsistent column counts."
+;;   (interactive "r")
+;;   (let* ((lines  (split-string (buffer-substring-no-properties beg end) "\n"))
+;;          (counts (mapcar (lambda (l) (1+ (length (split-string l "\t")))) lines))
+;;          (n      (car counts)))
+;;     (unless (cl-every (lambda (c) (= c n)) counts)
+;;       (user-error "Inconsistent column count: %S (expected %d)" counts n))
+;;     (delete-region beg end)
+;;     (insert (mapconcat (lambda (l)
+;;                          (concat "|" (replace-regexp-in-string "\t+" "|" l) "|"))
+;;                        lines "\n")
+;;             "\n")
+;;     (goto-char beg)
+;;     (forward-line)
+;;     (insert "|-\n")))
 
 (defun org-tsv2markdown-org2markdown (beg end)
   "Convert an Org mode table in the region back to a Markdown table.
@@ -159,7 +183,7 @@ The region is bounded by BEG and END."
 
 
 (defun org-tsv2markdown-reformat-table-or-items (beg end)
-  "Reformat selected region as Org table or Org-style items.
+  "Reformat BEG..END as Org table or Org-style items.
 
 If region is in Org mode and contains tabs, convert to Org table.
 Else, reformat markdown items ('- **LABEL:**') to Org style ('- LABEL ::').
@@ -167,30 +191,27 @@ If a single line, surround with '*' as simple emphasis."
   (interactive "r")
   (cond
    ((and (derived-mode-p 'org-mode)
-         (region-active-p)
-         (save-excursion (goto-char beg) (and (re-search-forward "^|" end t) (re-search-forward "|$" end t))))
+         (save-excursion
+           (goto-char beg)
+           (and (re-search-forward "^|" end t)
+                (re-search-forward "|$" end t))))
     (org-tsv2markdown-table-to-tsv beg end))
    ((and (derived-mode-p 'org-mode)
-         (region-active-p)
          (save-excursion (goto-char beg) (re-search-forward "\t" end t)))
     (org-tsv2markdown-tsv2org beg end))
-   ((and (region-active-p)
-         (> (count-lines beg end) 1))
+   ((> (count-lines beg end) 1)
     (org-tsv2markdown-items2org beg end))
    (t
     ;; Single line: surround with '*' for emphasis
-    (let ((beg (if (region-active-p) beg (line-beginning-position)))
-          (end (if (region-active-p) end (line-end-position))))
-      (save-excursion
-        (goto-char end)
-        (insert "*")
-        (when (let ((c (char-after))) (and c (not (memq c '(?\n ?\r)))))
-          (insert " "))
-        (goto-char beg)
-        (when (let ((c (char-before))) (and c (not (memq c '(?\n ?\r)))))
-          (insert " "))
-        (insert "*"))))))
-
+    (save-excursion
+      (goto-char end)
+      (insert "*")
+      (when (let ((c (char-after))) (and c (not (memq c '(?\n ?\r)))))
+        (insert " "))
+      (goto-char beg)
+      (when (let ((c (char-before))) (and c (not (memq c '(?\n ?\r)))))
+        (insert " "))
+      (insert "*")))))
 ;;;; provide
 
 (provide 'org-tsv2markdown)

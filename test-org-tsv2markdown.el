@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 (require 'ert)
 
 (defun my--test-helper (input-text expected-text)
@@ -226,12 +227,6 @@ run `org-tsv2markdown-items2org` on the whole buffer, and assert it matches EXPE
    "\t\tZen of Emacs: C core\n\t\tZen of Vim: C core\n"
    "- Zen of Emacs :: C core\n- Zen of Vim :: C core\n"))
 
-(ert-deftest test-org-tsv2markdown-items2org-mixed-whitespace-and-formats ()
-  "Test transformation with mixed whitespace and all format types."
-  (my--test-items2org-helper
-   "   **Bold WS:** val1\n\t*Italic WS:* val2\n  Plain WS: val3\n- **Dash Bold:** val4\n"
-   "- Bold WS :: val1\n- Italic WS :: val2\n- Plain WS :: val3\n- Dash Bold :: val4\n"))
-
 
 (ert-deftest test-org-tsv2markdown-items2org-mixed-whitespace-and-formats ()
   "Test transformation with mixed whitespace and all format types."
@@ -268,3 +263,46 @@ run `org-tsv2markdown-items2org` on the whole buffer, and assert it matches EXPE
   (my--test-items2org-helper
    "**Zen of Emacs 之道：** C core\n*Vim 哲学:* Python\nEnglish Text: Value\n"
    "- Zen of Emacs 之道 :: C core\n- Vim 哲学 :: Python\n- English Text :: Value\n"))
+
+
+(ert-deftest tsv2org/repro-end-after-end-of-buffer ()
+  "Old buggy `org-tsv2markdown-tsv2org' signalled
+\"End after end of buffer\" when the region ends at `point-max'.
+The new code (with column-count validation) should instead report
+inconsistent column counts, since the last row has fewer columns."
+  (with-temp-buffer
+    (org-mode)
+    (insert "\nx\tx\t\tx\tx\nx\tx\t\tx\tx\nx\tx\t\tx\tx\nx\tx\n")
+    (should-error (org-tsv2markdown-tsv2org (point-min) (point-max))
+                  :type 'user-error)
+    (should (string-match-p
+             "Inconsistent column count"
+             (condition-case e
+                 (progn (org-tsv2markdown-tsv2org (point-min) (point-max)) "")
+               (error (error-message-string e)))))))
+
+
+(ert-deftest tsv2org/mismatched-rows-error ()
+  "Rows with differing column counts raise a `user-error'."
+  (with-temp-buffer
+    (org-mode)
+    (insert "a\tb\tc\nd\te\n")
+    (should-error (org-tsv2markdown-tsv2org (point-min) (point-max))
+                  :type 'user-error)))
+
+
+(ert-deftest tsv2org/consistent-table-converts ()
+  (with-temp-buffer
+    (org-mode)
+    (insert "a\tb\tc\nd\te\tf\n")
+    (org-tsv2markdown-tsv2org (point-min) (point-max))
+    (should (equal (buffer-string)
+                   "|a|b|c|\n|-\n|d|e|f|\n"))))
+
+(ert-deftest tsv2org/trailing-tab-counts-as-column ()
+  (with-temp-buffer
+    (org-mode)
+    (insert "a\tb\t\nc\td\t\n")
+    (org-tsv2markdown-tsv2org (point-min) (point-max))
+    (should (equal (buffer-string)
+                   "|a|b||\n|-\n|c|d||\n"))))
